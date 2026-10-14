@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RISC-V Pipeline Visualizer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">ARQUITECTURA DE COMPUTADORES · RISC-V</div>
+      <h1>Pipeline Visualizer</h1>
+      <p class="subtitle">Simulador educativo de 5 etapas: IF → ID → EX → MEM → WB</p>
+    </div>
+    <div class="status-pill" id="statusPill">Listo</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel editor-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Programa</h2>
+          <p>Escribe instrucciones RISC-V (subconjunto educativo).</p>
+        </div>
+        <button id="loadExampleBtn" class="ghost">Cargar ejemplo</button>
+      </div>
+
+      <textarea id="programInput" spellcheck="false">add x5, x6, x7
+sub x8, x5, x10
+lw x9, 0(x5)
+add x11, x9, x12
+beq x11, x0, 16
+sw x8, 8(x13)</textarea>
+
+      <div class="controls-grid">
+        <label>PC inicial
+          <input id="startPcInput" type="number" value="40" step="4" />
+        </label>
+        <label>Predicción de branch
+          <select id="predictorSelect">
+            <option value="nt">Siempre Not Taken</option>
+            <option value="1bit">Predictor de 1 bit</option>
+          </select>
+        </label>
+        <label class="switch-row">
+          <input id="unifiedMemoryToggle" type="checkbox" />
+          <span>Memoria única (activar riesgo estructural)</span>
+        </label>
+        <label class="switch-row">
+          <input id="exceptionsToggle" type="checkbox" checked />
+          <span>Excepciones didácticas activas</span>
+        </label>
+      </div>
+
+      <div class="buttons">
+        <button id="assembleBtn" class="primary">Preparar</button>
+        <button id="stepBtn">Siguiente ciclo</button>
+        <button id="runBtn">Ejecutar</button>
+        <button id="pauseBtn">Pausar</button>
+        <button id="resetBtn" class="danger">Reiniciar</button>
+      </div>
+
+      <div class="helper">
+        <strong>Instrucciones:</strong> add, sub, and, or, addi, lw, sw, beq, bne, nop.
+        <span>Ej.: <code>lw x5, 0(x10)</code></span>
+      </div>
+    </section>
+
+    <section class="panel regs-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Registros</h2>
+          <p>Haz clic en un valor para editarlo.</p>
+        </div>
+      </div>
+      <div id="registerGrid" class="register-grid"></div>
+    </section>
+
+    <section class="panel pipeline-panel full">
+      <div class="panel-head">
+        <div>
+          <h2>Pipeline ciclo por ciclo</h2>
+          <p id="cycleLabel">Ciclo 0</p>
+        </div>
+        <div class="legend">
+          <span><i class="dot if"></i>IF</span>
+          <span><i class="dot id"></i>ID</span>
+          <span><i class="dot ex"></i>EX</span>
+          <span><i class="dot mem"></i>MEM</span>
+          <span><i class="dot wb"></i>WB</span>
+          <span><i class="dot stall"></i>STALL</span>
+          <span><i class="dot flush"></i>FLUSH</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="pipelineTable">
+          <thead><tr id="pipelineHead"><th>Instr.</th><th>PC</th><th>Código</th></tr></thead>
+          <tbody id="pipelineBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel event-panel">
+      <div class="panel-head"><div><h2>Evento actual</h2><p>El simulador explica qué hizo el procesador y por qué.</p></div></div>
+      <div id="eventBox" class="event-box neutral"><div class="event-icon">●</div><div><h3>Sin eventos</h3><p>Prepara el programa y avanza ciclo por ciclo.</p></div></div>
+      <div class="event-log" id="eventLog"></div>
+    </section>
+
+    <section class="panel datapath-panel">
+      <div class="panel-head"><div><h2>Datapath simplificado</h2><p>La etapa activa se resalta automáticamente.</p></div></div>
+      <div class="datapath">
+        <div class="stage" data-stage="IF"><b>IF</b><small>PC · I-Mem</small></div><div class="arrow">→</div><div class="pipe-reg">IF/ID</div><div class="arrow">→</div>
+        <div class="stage" data-stage="ID"><b>ID</b><small>Control · Regs</small></div><div class="arrow">→</div><div class="pipe-reg">ID/EX</div><div class="arrow">→</div>
+        <div class="stage" data-stage="EX"><b>EX</b><small>ALU · Branch</small></div><div class="arrow">→</div><div class="pipe-reg">EX/MEM</div><div class="arrow">→</div>
+        <div class="stage" data-stage="MEM"><b>MEM</b><small>Data Memory</small></div><div class="arrow">→</div><div class="pipe-reg">MEM/WB</div><div class="arrow">→</div>
+        <div class="stage" data-stage="WB"><b>WB</b><small>Register File</small></div>
+      </div>
+      <div class="flow-notes">
+        <div><strong>Hazard Detection</strong><span id="hazardNote">—</span></div>
+        <div><strong>Forwarding</strong><span id="forwardNote">—</span></div>
+        <div><strong>Excepción</strong><span id="exceptionNote">—</span></div>
+      </div>
+    </section>
+
+    <section class="panel memory-panel full">
+      <div class="panel-head"><div><h2>Estado de ejecución</h2><p>PC, memoria y predictor.</p></div></div>
+      <div class="state-cards">
+        <div class="mini-card"><span>PC de fetch</span><strong id="pcValue">40</strong></div>
+        <div class="mini-card"><span>Instrucciones completadas</span><strong id="retiredValue">0</strong></div>
+        <div class="mini-card"><span>Stalls</span><strong id="stallValue">0</strong></div>
+        <div class="mini-card"><span>Flushes</span><strong id="flushValue">0</strong></div>
+        <div class="mini-card"><span>Forwardings</span><strong id="forwardValue">0</strong></div>
+        <div class="mini-card"><span>Excepciones</span><strong id="exceptionValue">0</strong></div>
+      </div>
+      <div class="memory-grid"><div><h3>Memoria de datos</h3><div id="memoryView" class="mono-box"></div></div><div><h3>Estado del predictor</h3><div id="predictorView" class="mono-box"></div></div></div>
+    </section>
+  </main>
+  <footer>Simulador educativo · Arquitectura RISC-V · Pipeline clásico de 5 etapas</footer>
+  <script src="app.js"></script>
+</body>
+</html>
